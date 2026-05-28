@@ -5,8 +5,9 @@
 (function ($) {
     'use strict';
 
-    let pendingRejectId   = null;
+    let pendingRejectId    = null;
     let pendingRejectNonce = null;
+    let pendingRejectType  = 'registration'; // 'registration' | 'enrollment'
 
     // ── Approvazione ─────────────────────────────────────────────────────────
     $(document).on('click', '.mt-btn-approve', function () {
@@ -37,10 +38,48 @@
         });
     });
 
+    // ── Approvazione richiesta tour ───────────────────────────────────────────
+    $(document).on('click', '.mt-btn-approve-enroll', function () {
+        const $btn     = $(this);
+        const enrollId = $btn.data('id');
+        const nonce    = $btn.data('nonce') || mtAdmin.nonce;
+
+        if (!confirm('Confermi l\'approvazione della richiesta tour?')) return;
+
+        $btn.prop('disabled', true).text('...');
+
+        $.post(mtAdmin.ajaxUrl, {
+            action:    'mt_approve_enrollment',
+            enroll_id: enrollId,
+            nonce:     nonce,
+        }).done(function (res) {
+            if (res.success) {
+                showToast('✅ Richiesta approvata!', 'success');
+                setTimeout(() => location.reload(), 1000);
+            } else {
+                showToast('Errore: ' + (res.data?.message || 'Sconosciuto'), 'error');
+                $btn.prop('disabled', false).text('✅');
+            }
+        }).fail(function () {
+            showToast('Errore di rete.', 'error');
+            $btn.prop('disabled', false).text('✅');
+        });
+    });
+
     // ── Rifiuto ───────────────────────────────────────────────────────────────
     $(document).on('click', '.mt-btn-reject', function () {
         pendingRejectId    = $(this).data('id');
         pendingRejectNonce = $(this).data('nonce') || mtAdmin.nonce;
+        pendingRejectType  = 'registration';
+        $('#mt-reject-reason').val('');
+        $('#mt-reject-modal').show();
+    });
+
+    // ── Rifiuto richiesta tour ────────────────────────────────────────────────
+    $(document).on('click', '.mt-btn-reject-enroll', function () {
+        pendingRejectId    = $(this).data('id');
+        pendingRejectNonce = $(this).data('nonce') || mtAdmin.nonce;
+        pendingRejectType  = 'enrollment';
         $('#mt-reject-reason').val('');
         $('#mt-reject-modal').show();
     });
@@ -60,14 +99,14 @@
 
         $(this).prop('disabled', true).text('...');
 
-        $.post(mtAdmin.ajaxUrl, {
-            action: 'mt_reject_registration',
-            reg_id: pendingRejectId,
-            nonce:  pendingRejectNonce,
-            reason: reason,
-        }).done(function (res) {
+        const isEnrollment = pendingRejectType === 'enrollment';
+        const postData = isEnrollment
+            ? { action: 'mt_reject_enrollment', enroll_id: pendingRejectId, nonce: pendingRejectNonce, reason }
+            : { action: 'mt_reject_registration', reg_id: pendingRejectId, nonce: pendingRejectNonce, reason };
+
+        $.post(mtAdmin.ajaxUrl, postData).done(function (res) {
             if (res.success) {
-                showToast('❌ Iscrizione rifiutata.', 'success');
+                showToast(isEnrollment ? '❌ Richiesta rifiutata.' : '❌ Iscrizione rifiutata.', 'success');
                 $('#mt-reject-modal').hide();
                 setTimeout(() => location.reload(), 1000);
             } else {

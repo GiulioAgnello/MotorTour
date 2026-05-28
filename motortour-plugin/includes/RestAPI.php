@@ -11,13 +11,16 @@ if ( ! defined( 'ABSPATH' ) ) exit;
  * Endpoint pubblici:
  *   GET  /tours                   → lista tour aperti
  *   GET  /tours/{id}              → dettaglio tour (pubblico: titolo, data, banner)
- *   POST /register                → nuova iscrizione (+ upload documenti)
- *   POST /auth/login              → login utente registrato
+ *   POST /register                → nuova iscrizione al club (+ upload documenti)
+ *   POST /auth/login              → login utente approvato
  *   POST /auth/logout             → logout
  *
- * Endpoint autenticati (JWT token o cookie WP):
- *   GET  /my/registration         → stato iscrizione dell'utente loggato
- *   GET  /my/tour                 → dati completi del tour a cui è iscritto
+ * Endpoint autenticati (JWT token):
+ *   GET  /my/registration         → stato membership del socio
+ *   GET  /my/profile              → dati profilo del socio (nome, telefono ecc.)
+ *   GET  /my/enrollments          → lista richieste tour del socio
+ *   POST /tours/{id}/enroll       → richiesta iscrizione a un tour specifico
+ *   GET  /my/tour                 → dati completi del tour (deprecato, mantenuto per compat.)
  */
 class RestAPI {
 
@@ -73,6 +76,30 @@ class RestAPI {
             'methods'             => 'GET',
             'callback'            => [ $this, 'get_my_registration' ],
             'permission_callback' => [ $this, 'require_auth' ],
+        ] );
+
+        register_rest_route( self::NAMESPACE, '/my/profile', [
+            'methods'             => 'GET',
+            'callback'            => [ $this, 'get_my_profile' ],
+            'permission_callback' => [ $this, 'require_auth' ],
+        ] );
+
+        register_rest_route( self::NAMESPACE, '/my/enrollments', [
+            'methods'             => 'GET',
+            'callback'            => [ $this, 'get_my_enrollments' ],
+            'permission_callback' => [ $this, 'require_auth' ],
+        ] );
+
+        register_rest_route( self::NAMESPACE, '/tours/(?P<id>\d+)/enroll', [
+            'methods'             => 'POST',
+            'callback'            => [ $this, 'submit_tour_enrollment' ],
+            'permission_callback' => [ $this, 'require_auth_and_approved' ],
+            'args'                => [
+                'id' => [
+                    'validate_callback' => fn( $v ) => is_numeric( $v ),
+                    'sanitize_callback' => 'absint',
+                ],
+            ],
         ] );
 
         register_rest_route( self::NAMESPACE, '/my/tour', [
@@ -203,6 +230,122 @@ class RestAPI {
             'reject_reason'   => get_post_meta( $reg->ID, 'mt_reg_reject_reason', true ),
             'tour'            => $tour ? $this->format_tour_summary( $tour ) : null,
         ], 200 );
+    }
+
+    /**
+     * GET /my/profile
+     * Restituisce i dati del profilo del socio (dall'iscrizione base).
+     */
+    public function get_my_profile( \WP_REST_Request $request ): \WP_REST_Response|\WP_Error {
+        $user_id = $this->get_user_from_token( $request );
+        $reg     = $this->find_registration_by_user( $user_id );
+
+        if ( ! $reg ) {
+            return new \WP_Error( 'mt_not_found', __( 'Profilo non trovato.', 'motortour' ), [ 'status' => 404 ] );
+        }
+
+        $meta = get_post_meta( $reg->ID );
+        return new \WP_REST_Response( [
+            'name'        => trim( ( $meta['mt_reg_pilot_first_name'][0] ?? '' ) . ' ' . ( $meta['mt_reg_pilot_last_name'][0] ?? '' ) ),
+            'first_name'  => $meta['mt_reg_pilot_first_name'][0] ?? '',
+            'last_name'   => $meta['mt_reg_pilot_last_name'][0] ?? '',
+            'email'       => $meta['mt_reg_email'][0] ?? '',
+            'phone'       => $meta['mt_reg_pilot_phone'][0] ?? '',
+            'birth_place' => $meta['mt_reg_pilot_birth_place'][0] ?? '',
+            'birth_date'  => $meta['mt_reg_pilot_birth_date'][0] ?? '',
+            'city'        => $meta['mt_reg_pilot_city'][0] ?? '',
+            'address'     => $meta['mt_reg_pilot_address'][0] ?? '',
+            'zip'         => $meta['mt_reg_pilot_zip'][0] ?? '',
+        ], 200 );
+    }
+
+    /**
+     * GET /my/enrollments
+     * Restituisce tutte le richieste tour del socio loggato.
+     */
+    public function get_my_enrollments( \WP_REST_Request $request ): \WP_REST_Response {
+        $user_id     = $this->get_user_from_token( $request );
+        $enrollments = $this->find_enrollments_by_user( $user_id );
+        $data        = array_map( [ $this, 'format_enrollment' ], $enrollments );
+        return new \WP_REST_Response( $data, 200 );
+    }
+
+    /**
+     * POST /tours/{id}/enroll
+     * Il socio approvato invia una richiesta per un tour specifico.
+     */
+    public function submit_tour_enrollment( \WP_REST_Request $request ): \WP_REST_Response|\WP_Error {
+        $user_id = $this->get_user_from_token( $request );
+        $tour_id = $request->get_param( 'id' );
+
+        // Verifica tour
+        $tour = get_post( $tour_id );
+        if ( ! $tour || $tour->post_type !== 'mt_tour' ) {
+            return new \WP_Error( 'mt_not_found', __( 'Tour non trovato.', 'motortour' ), [ 'status' => 404 ] );
+        }
+        $tour_status = get_post_meta( $tour_id, 'mt_tour_status', true );
+        if ( $tour_status !== 'open' ) {
+            return new \WP_Error( 'mt_tour_closed', __( 'Le iscrizioni per questo tour sono chiuse.', 'motortour' ), [ 'status' => 400 ] );
+        }
+
+        // Impedisci doppia iscrizione
+        $existing = get_posts( [
+            'post_type'      => 'mt_tour_enrollment',
+            'posts_per_page' => 1,
+            'meta_query'     => [
+                [ 'key' => 'mt_enroll_tour_id',   'value' => $tour_id ],
+                [ 'key' => 'mt_enroll_member_id',  'value' => $user_id ],
+            ],
+        ] );
+        if ( $existing ) {
+            return new \WP_Error( 'mt_already_enrolled', __( 'Hai già inviato una richiesta per questo tour.', 'motortour' ), [ 'status' => 409 ] );
+        }
+
+        // Campi obbligatori
+        $moto_model = sanitize_text_field( $request->get_param( 'moto_model' ) ?? '' );
+        $moto_plate = strtoupper( sanitize_text_field( $request->get_param( 'moto_plate' ) ?? '' ) );
+        if ( ! $moto_model || ! $moto_plate ) {
+            return new \WP_Error( 'mt_missing_fields', __( 'Modello moto e targa sono obbligatori.', 'motortour' ), [ 'status' => 400 ] );
+        }
+
+        $user       = get_userdata( $user_id );
+        $now        = current_time( 'c' );
+        $enroll_id  = wp_insert_post( [
+            'post_type'   => 'mt_tour_enrollment',
+            'post_title'  => $user->display_name . ' – ' . $tour->post_title,
+            'post_status' => 'publish',
+        ] );
+
+        if ( is_wp_error( $enroll_id ) ) {
+            return new \WP_Error( 'mt_save_error', __( 'Errore nel salvataggio.', 'motortour' ), [ 'status' => 500 ] );
+        }
+
+        update_post_meta( $enroll_id, 'mt_enroll_tour_id',    $tour_id );
+        update_post_meta( $enroll_id, 'mt_enroll_member_id',  $user_id );
+        update_post_meta( $enroll_id, 'mt_enroll_status',     'pending' );
+        update_post_meta( $enroll_id, 'mt_enroll_moto_model', $moto_model );
+        update_post_meta( $enroll_id, 'mt_enroll_moto_plate', $moto_plate );
+        update_post_meta( $enroll_id, 'mt_enroll_notes',      sanitize_textarea_field( $request->get_param( 'notes' ) ?? '' ) );
+        update_post_meta( $enroll_id, 'mt_enroll_submitted_at', $now );
+
+        $with_pass = (bool) $request->get_param( 'with_passenger' );
+        update_post_meta( $enroll_id, 'mt_enroll_with_passenger', $with_pass );
+        if ( $with_pass ) {
+            update_post_meta( $enroll_id, 'mt_enroll_pass_full_name',   sanitize_text_field( $request->get_param( 'pass_full_name' ) ?? '' ) );
+            update_post_meta( $enroll_id, 'mt_enroll_pass_birth_place', sanitize_text_field( $request->get_param( 'pass_birth_place' ) ?? '' ) );
+            update_post_meta( $enroll_id, 'mt_enroll_pass_birth_date',  sanitize_text_field( $request->get_param( 'pass_birth_date' ) ?? '' ) );
+            update_post_meta( $enroll_id, 'mt_enroll_pass_city',        sanitize_text_field( $request->get_param( 'pass_city' ) ?? '' ) );
+            update_post_meta( $enroll_id, 'mt_enroll_pass_address',     sanitize_text_field( $request->get_param( 'pass_address' ) ?? '' ) );
+            update_post_meta( $enroll_id, 'mt_enroll_pass_phone',       sanitize_text_field( $request->get_param( 'pass_phone' ) ?? '' ) );
+        }
+
+        do_action( 'mt_enrollment_submitted', $enroll_id );
+
+        return new \WP_REST_Response( [
+            'success'       => true,
+            'enrollment_id' => $enroll_id,
+            'message'       => __( 'Richiesta inviata! L\'admin la verificherà a breve.', 'motortour' ),
+        ], 201 );
     }
 
     public function get_my_tour( \WP_REST_Request $request ): \WP_REST_Response|\WP_Error {
@@ -362,5 +505,39 @@ class RestAPI {
             'meta_query'     => [ [ 'key' => 'mt_reg_user_id', 'value' => $user_id ] ],
         ] );
         return $posts[0] ?? null;
+    }
+
+    /**
+     * Restituisce tutte le richieste tour di un utente, ordinate per data decrescente.
+     *
+     * @return \WP_Post[]
+     */
+    private function find_enrollments_by_user( int $user_id ): array {
+        return get_posts( [
+            'post_type'      => 'mt_tour_enrollment',
+            'posts_per_page' => -1,
+            'orderby'        => 'date',
+            'order'          => 'DESC',
+            'meta_query'     => [ [ 'key' => 'mt_enroll_member_id', 'value' => $user_id ] ],
+        ] );
+    }
+
+    private function format_enrollment( \WP_Post $enrollment ): array {
+        $meta    = get_post_meta( $enrollment->ID );
+        $tour_id = (int) ( $meta['mt_enroll_tour_id'][0] ?? 0 );
+        $tour    = $tour_id ? get_post( $tour_id ) : null;
+        return [
+            'id'             => $enrollment->ID,
+            'status'         => $meta['mt_enroll_status'][0] ?? 'pending',
+            'moto_model'     => $meta['mt_enroll_moto_model'][0] ?? '',
+            'moto_plate'     => $meta['mt_enroll_moto_plate'][0] ?? '',
+            'with_passenger' => (bool) ( $meta['mt_enroll_with_passenger'][0] ?? false ),
+            'notes'          => $meta['mt_enroll_notes'][0] ?? '',
+            'reject_reason'  => $meta['mt_enroll_reject_reason'][0] ?? '',
+            'submitted_at'   => $meta['mt_enroll_submitted_at'][0] ?? '',
+            'approved_at'    => $meta['mt_enroll_approved_at'][0] ?? '',
+            'rejected_at'    => $meta['mt_enroll_rejected_at'][0] ?? '',
+            'tour'           => $tour ? $this->format_tour_summary( $tour ) : null,
+        ];
     }
 }

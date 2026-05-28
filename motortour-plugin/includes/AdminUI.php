@@ -20,16 +20,22 @@ class AdminUI {
         add_action( 'add_meta_boxes',        [ $this, 'register_metaboxes' ] );
         add_action( 'save_post_mt_tour',     [ $this, 'save_tour_meta' ], 10, 2 );
 
-        // Azioni AJAX per approvazione/rifiuto
+        // Azioni AJAX per approvazione/rifiuto membership
         add_action( 'wp_ajax_mt_approve_registration',      [ $this, 'ajax_approve' ] );
         add_action( 'wp_ajax_mt_reject_registration',       [ $this, 'ajax_reject' ] );
         add_action( 'wp_ajax_mt_review_registration',       [ $this, 'ajax_set_review' ] );
 
+        // Azioni AJAX per approvazione/rifiuto richieste tour
+        add_action( 'wp_ajax_mt_approve_enrollment',        [ $this, 'ajax_approve_enrollment' ] );
+        add_action( 'wp_ajax_mt_reject_enrollment',         [ $this, 'ajax_reject_enrollment' ] );
+
         // Colonne custom nelle liste
-        add_filter( 'manage_mt_registration_posts_columns',       [ $this, 'registration_columns' ] );
-        add_action( 'manage_mt_registration_posts_custom_column', [ $this, 'registration_column_content' ], 10, 2 );
-        add_filter( 'manage_mt_tour_posts_columns',               [ $this, 'tour_columns' ] );
-        add_action( 'manage_mt_tour_posts_custom_column',         [ $this, 'tour_column_content' ], 10, 2 );
+        add_filter( 'manage_mt_registration_posts_columns',         [ $this, 'registration_columns' ] );
+        add_action( 'manage_mt_registration_posts_custom_column',   [ $this, 'registration_column_content' ], 10, 2 );
+        add_filter( 'manage_mt_tour_posts_columns',                 [ $this, 'tour_columns' ] );
+        add_action( 'manage_mt_tour_posts_custom_column',           [ $this, 'tour_column_content' ], 10, 2 );
+        add_filter( 'manage_mt_tour_enrollment_posts_columns',      [ $this, 'enrollment_columns' ] );
+        add_action( 'manage_mt_tour_enrollment_posts_custom_column',[ $this, 'enrollment_column_content' ], 10, 2 );
 
         // Filtro per stato iscrizione
         add_action( 'restrict_manage_posts', [ $this, 'filter_registrations_by_status' ] );
@@ -52,21 +58,29 @@ class AdminUI {
             30
         );
 
-        add_submenu_page( 'motortour', __( 'Dashboard', 'motortour' ),     __( 'Dashboard', 'motortour' ),    'manage_options', 'motortour',               [ $this, 'page_dashboard' ] );
-        add_submenu_page( 'motortour', __( 'Iscrizioni', 'motortour' ),    __( 'Iscrizioni', 'motortour' ),   'manage_options', 'edit.php?post_type=mt_registration' );
-        add_submenu_page( 'motortour', __( 'Tour', 'motortour' ),          __( 'Tour', 'motortour' ),         'manage_options', 'edit.php?post_type=mt_tour' );
-        add_submenu_page( 'motortour', __( 'Tappe', 'motortour' ),         __( 'Tappe', 'motortour' ),        'manage_options', 'edit.php?post_type=mt_stage' );
-        add_submenu_page( 'motortour', __( 'POI', 'motortour' ),           __( 'POI', 'motortour' ),          'manage_options', 'edit.php?post_type=mt_poi' );
-        add_submenu_page( 'motortour', __( 'Impostazioni', 'motortour' ),  __( 'Impostazioni', 'motortour' ), 'manage_options', 'motortour-settings',        [ $this, 'page_settings' ] );
+        add_submenu_page( 'motortour', __( 'Dashboard', 'motortour' ),        __( 'Dashboard', 'motortour' ),       'manage_options', 'motortour',               [ $this, 'page_dashboard' ] );
+        add_submenu_page( 'motortour', __( 'Iscrizioni al Club', 'motortour' ), __( 'Iscrizioni Club', 'motortour' ), 'manage_options', 'edit.php?post_type=mt_registration' );
+        add_submenu_page( 'motortour', __( 'Richieste Tour', 'motortour' ), __( 'Richieste Tour', 'motortour' ),  'manage_options', 'edit.php?post_type=mt_tour_enrollment' );
+        add_submenu_page( 'motortour', __( 'Tour', 'motortour' ),           __( 'Tour', 'motortour' ),             'manage_options', 'edit.php?post_type=mt_tour' );
+        add_submenu_page( 'motortour', __( 'Tappe', 'motortour' ),          __( 'Tappe', 'motortour' ),            'manage_options', 'edit.php?post_type=mt_stage' );
+        add_submenu_page( 'motortour', __( 'POI', 'motortour' ),            __( 'POI', 'motortour' ),              'manage_options', 'edit.php?post_type=mt_poi' );
+        add_submenu_page( 'motortour', __( 'Impostazioni', 'motortour' ),   __( 'Impostazioni', 'motortour' ),     'manage_options', 'motortour-settings',      [ $this, 'page_settings' ] );
     }
 
     // ─── Dashboard ────────────────────────────────────────────────────────────
 
     public function page_dashboard(): void {
-        $counts = $this->get_registration_counts();
+        $counts          = $this->get_registration_counts();
+        $enroll_counts   = $this->get_enrollment_counts();
         $recent = get_posts( [
             'post_type'      => 'mt_registration',
             'posts_per_page' => 10,
+            'orderby'        => 'date',
+            'order'          => 'DESC',
+        ] );
+        $recent_enrollments = get_posts( [
+            'post_type'      => 'mt_tour_enrollment',
+            'posts_per_page' => 5,
             'orderby'        => 'date',
             'order'          => 'DESC',
         ] );
@@ -77,24 +91,90 @@ class AdminUI {
                 MotorTour — Dashboard
             </h1>
 
+            <h2 style="margin-bottom:8px">🏍️ Iscrizioni al Club</h2>
             <div class="mt-stats-grid">
                 <?php foreach ( [
-                    [ 'pending',      '🕐', 'In attesa',     $counts['pending'] ],
-                    [ 'under_review', '🔍', 'In revisione',  $counts['under_review'] ],
-                    [ 'approved',     '✅', 'Approvate',     $counts['approved'] ],
-                    [ 'rejected',     '❌', 'Rifiutate',     $counts['rejected'] ],
-                ] as [ $status, $icon, $label, $count ] ) : ?>
+                    [ 'pending',      '🕐', 'In attesa',     $counts['pending'],      'mt_registration' ],
+                    [ 'under_review', '🔍', 'In revisione',  $counts['under_review'], 'mt_registration' ],
+                    [ 'approved',     '✅', 'Approvate',     $counts['approved'],     'mt_registration' ],
+                    [ 'rejected',     '❌', 'Rifiutate',     $counts['rejected'],     'mt_registration' ],
+                ] as [ $status, $icon, $label, $count, $post_type ] ) : ?>
                 <div class="mt-stat-card mt-stat-<?php echo esc_attr( $status ); ?>">
                     <span class="mt-stat-icon"><?php echo $icon; ?></span>
                     <span class="mt-stat-count"><?php echo (int) $count; ?></span>
                     <span class="mt-stat-label"><?php echo esc_html( $label ); ?></span>
-                    <a href="edit.php?post_type=mt_registration&mt_status=<?php echo esc_attr( $status ); ?>"
+                    <a href="edit.php?post_type=<?php echo esc_attr( $post_type ); ?>&mt_status=<?php echo esc_attr( $status ); ?>"
                        class="mt-stat-link">Vedi →</a>
                 </div>
                 <?php endforeach; ?>
             </div>
 
-            <h2>Iscrizioni recenti</h2>
+            <h2 style="margin-top:24px;margin-bottom:8px">🎯 Richieste Tour</h2>
+            <div class="mt-stats-grid">
+                <?php foreach ( [
+                    [ 'pending',  '🕐', 'In attesa',  $enroll_counts['pending']  ],
+                    [ 'approved', '✅', 'Approvate',  $enroll_counts['approved'] ],
+                    [ 'rejected', '❌', 'Rifiutate',  $enroll_counts['rejected'] ],
+                ] as [ $status, $icon, $label, $count ] ) : ?>
+                <div class="mt-stat-card mt-stat-<?php echo esc_attr( $status ); ?>">
+                    <span class="mt-stat-icon"><?php echo $icon; ?></span>
+                    <span class="mt-stat-count"><?php echo (int) $count; ?></span>
+                    <span class="mt-stat-label"><?php echo esc_html( $label ); ?></span>
+                    <a href="edit.php?post_type=mt_tour_enrollment&mt_enroll_status=<?php echo esc_attr( $status ); ?>"
+                       class="mt-stat-link">Vedi →</a>
+                </div>
+                <?php endforeach; ?>
+            </div>
+
+            <?php if ( $recent_enrollments ) : ?>
+            <h2>Ultime richieste tour</h2>
+            <table class="wp-list-table widefat fixed striped mt-table" style="margin-bottom:32px">
+                <thead>
+                    <tr>
+                        <th>Socio</th>
+                        <th>Tour richiesto</th>
+                        <th>Moto</th>
+                        <th>Stato</th>
+                        <th>Data</th>
+                        <th>Azioni</th>
+                    </tr>
+                </thead>
+                <tbody>
+                <?php foreach ( $recent_enrollments as $enroll ) :
+                    $meta      = get_post_meta( $enroll->ID );
+                    $status    = $meta['mt_enroll_status'][0] ?? 'pending';
+                    $tour      = get_post( (int) ( $meta['mt_enroll_tour_id'][0] ?? 0 ) );
+                    $member    = get_userdata( (int) ( $meta['mt_enroll_member_id'][0] ?? 0 ) );
+                    $submitted = $meta['mt_enroll_submitted_at'][0] ?? '';
+                    $moto      = trim( ( $meta['mt_enroll_moto_model'][0] ?? '' ) . ' ' . ( $meta['mt_enroll_moto_plate'][0] ?? '' ) );
+                    ?>
+                    <tr>
+                        <td>
+                            <strong><?php echo $member ? esc_html( $member->display_name ) : '–'; ?></strong><br>
+                            <small><?php echo $member ? esc_html( $member->user_email ) : ''; ?></small>
+                        </td>
+                        <td><?php echo $tour ? esc_html( $tour->post_title ) : '–'; ?></td>
+                        <td><?php echo esc_html( $moto ); ?></td>
+                        <td><?php echo $this->enrollment_status_badge( $status ); ?></td>
+                        <td><?php echo $submitted ? esc_html( wp_date( 'd/m/Y', strtotime( $submitted ) ) ) : '–'; ?></td>
+                        <td class="mt-actions">
+                            <a href="<?php echo esc_url( get_edit_post_link( $enroll->ID ) ); ?>" class="button button-small">Dettagli</a>
+                            <?php if ( $status === 'pending' ) : ?>
+                            <button class="button button-primary button-small mt-btn-approve-enroll"
+                                    data-id="<?php echo $enroll->ID; ?>"
+                                    data-nonce="<?php echo wp_create_nonce( 'mt_admin_action' ); ?>">✅</button>
+                            <button class="button button-small mt-btn-reject-enroll"
+                                    data-id="<?php echo $enroll->ID; ?>"
+                                    data-nonce="<?php echo wp_create_nonce( 'mt_admin_action' ); ?>">❌</button>
+                            <?php endif; ?>
+                        </td>
+                    </tr>
+                <?php endforeach; ?>
+                </tbody>
+            </table>
+            <?php endif; ?>
+
+            <h2>Iscrizioni al Club recenti</h2>
             <table class="wp-list-table widefat fixed striped mt-table">
                 <thead>
                     <tr>
@@ -365,8 +445,10 @@ class AdminUI {
     public function register_metaboxes(): void {
         add_meta_box( 'mt_tour_details', '📋 Dettagli Tour', [ $this, 'metabox_tour_details' ], 'mt_tour', 'normal', 'high' );
         add_meta_box( 'mt_tour_identity', '🎨 Identità Visiva', [ $this, 'metabox_tour_identity' ], 'mt_tour', 'side', 'default' );
-        add_meta_box( 'mt_registration_details', '👤 Dati Iscrizione', [ $this, 'metabox_registration_details' ], 'mt_registration', 'normal', 'high' );
+        add_meta_box( 'mt_registration_details', '👤 Dati Iscrizione al Club', [ $this, 'metabox_registration_details' ], 'mt_registration', 'normal', 'high' );
         add_meta_box( 'mt_registration_actions', '⚙️ Azioni', [ $this, 'metabox_registration_actions' ], 'mt_registration', 'side', 'high' );
+        add_meta_box( 'mt_enrollment_details', '🏍️ Richiesta Tour', [ $this, 'metabox_enrollment_details' ], 'mt_tour_enrollment', 'normal', 'high' );
+        add_meta_box( 'mt_enrollment_actions', '⚙️ Azioni', [ $this, 'metabox_enrollment_actions' ], 'mt_tour_enrollment', 'side', 'high' );
     }
 
     public function metabox_tour_details( \WP_Post $post ): void {
@@ -525,6 +607,91 @@ class AdminUI {
         }
     }
 
+    // ─── Metabox enrollment ───────────────────────────────────────────────────
+
+    public function metabox_enrollment_details( \WP_Post $post ): void {
+        $meta    = get_post_meta( $post->ID );
+        $get     = fn( $key ) => esc_html( $meta[ $key ][0] ?? '–' );
+        $tour    = get_post( (int) ( $meta['mt_enroll_tour_id'][0] ?? 0 ) );
+        $member  = get_userdata( (int) ( $meta['mt_enroll_member_id'][0] ?? 0 ) );
+        $reg_id  = $member ? get_user_meta( $member->ID, 'mt_registration_id', true ) : 0;
+        ?>
+        <div class="mt-reg-details">
+
+            <div class="mt-reg-section">
+                <h4>🎯 Tour richiesto</h4>
+                <p><?php echo $tour ? esc_html( $tour->post_title ) : '–'; ?></p>
+                <?php if ( $tour ) :
+                    $tour_date = get_post_meta( $tour->ID, 'mt_tour_date', true );
+                    if ( $tour_date ) echo '<p><small>📅 ' . esc_html( wp_date( 'd/m/Y', strtotime( $tour_date ) ) ) . '</small></p>';
+                endif; ?>
+            </div>
+
+            <div class="mt-reg-section">
+                <h4>👤 Socio richiedente</h4>
+                <?php if ( $member ) : ?>
+                <table class="mt-detail-table">
+                    <tr><td>Nome</td><td><?php echo esc_html( $member->display_name ); ?></td></tr>
+                    <tr><td>Email</td><td><?php echo esc_html( $member->user_email ); ?></td></tr>
+                </table>
+                <?php if ( $reg_id ) : ?>
+                <p><a href="<?php echo esc_url( get_edit_post_link( $reg_id ) ); ?>" class="button button-small" target="_blank">
+                    👁️ Visualizza profilo completo →
+                </a></p>
+                <?php endif; ?>
+                <?php else : echo '<p>–</p>'; endif; ?>
+            </div>
+
+            <div class="mt-reg-section">
+                <h4>🏍️ Veicolo per questo tour</h4>
+                <table class="mt-detail-table">
+                    <tr><td>Modello</td><td><?php echo $get('mt_enroll_moto_model'); ?></td></tr>
+                    <tr><td>Targa</td><td><?php echo $get('mt_enroll_moto_plate'); ?></td></tr>
+                </table>
+            </div>
+
+            <?php if ( ! empty( $meta['mt_enroll_with_passenger'][0] ) ) : ?>
+            <div class="mt-reg-section">
+                <h4>👥 Passeggero</h4>
+                <table class="mt-detail-table">
+                    <tr><td>Nome</td><td><?php echo $get('mt_enroll_pass_full_name'); ?></td></tr>
+                    <tr><td>Nato a / il</td><td><?php echo $get('mt_enroll_pass_birth_place') . ' – ' . $get('mt_enroll_pass_birth_date'); ?></td></tr>
+                    <tr><td>Cellulare</td><td><?php echo $get('mt_enroll_pass_phone'); ?></td></tr>
+                </table>
+            </div>
+            <?php else : ?>
+            <div class="mt-reg-section">
+                <h4>👥 Passeggero</h4>
+                <p><em>Nessun passeggero</em></p>
+            </div>
+            <?php endif; ?>
+
+            <?php $notes = $meta['mt_enroll_notes'][0] ?? ''; if ( $notes ) : ?>
+            <div class="mt-reg-section">
+                <h4>📝 Note</h4>
+                <p><?php echo esc_html( $notes ); ?></p>
+            </div>
+            <?php endif; ?>
+
+        </div>
+        <?php
+    }
+
+    public function metabox_enrollment_actions( \WP_Post $post ): void {
+        $status = get_post_meta( $post->ID, 'mt_enroll_status', true ) ?: 'pending';
+        $nonce  = wp_create_nonce( 'mt_admin_action' );
+        echo $this->enrollment_status_badge( $status );
+        echo '<br><br>';
+        if ( $status === 'pending' ) {
+            echo "<button class='button button-primary mt-btn-approve-enroll' data-id='{$post->ID}' data-nonce='{$nonce}' style='width:100%;margin-bottom:8px'>✅ Approva richiesta</button>";
+            echo "<button class='button mt-btn-reject-enroll' data-id='{$post->ID}' data-nonce='{$nonce}' style='width:100%'>❌ Rifiuta richiesta</button>";
+        }
+        if ( $status === 'rejected' ) {
+            $reason = esc_html( get_post_meta( $post->ID, 'mt_enroll_reject_reason', true ) );
+            if ( $reason ) echo "<p><strong>Motivazione:</strong><br>{$reason}</p>";
+        }
+    }
+
     // ─── Save metabox tour ────────────────────────────────────────────────────
 
     public function save_tour_meta( int $post_id, \WP_Post $post ): void {
@@ -567,6 +734,28 @@ class AdminUI {
         $reg_id = absint( $_POST['reg_id'] ?? 0 );
         ( new Registration() )->set_under_review( $reg_id );
         wp_send_json_success( [ 'message' => 'Iscrizione segnata in revisione.' ] );
+    }
+
+    public function ajax_approve_enrollment(): void {
+        check_ajax_referer( 'mt_admin_action', 'nonce' );
+        if ( ! current_user_can( 'manage_options' ) ) wp_die( 'Non autorizzato', 403 );
+        $id = absint( $_POST['enroll_id'] ?? 0 );
+        update_post_meta( $id, 'mt_enroll_status', 'approved' );
+        update_post_meta( $id, 'mt_enroll_approved_at', current_time( 'c' ) );
+        do_action( 'mt_enrollment_approved', $id );
+        wp_send_json_success( [ 'message' => 'Richiesta approvata.' ] );
+    }
+
+    public function ajax_reject_enrollment(): void {
+        check_ajax_referer( 'mt_admin_action', 'nonce' );
+        if ( ! current_user_can( 'manage_options' ) ) wp_die( 'Non autorizzato', 403 );
+        $id     = absint( $_POST['enroll_id'] ?? 0 );
+        $reason = sanitize_textarea_field( $_POST['reason'] ?? '' );
+        update_post_meta( $id, 'mt_enroll_status', 'rejected' );
+        update_post_meta( $id, 'mt_enroll_rejected_at', current_time( 'c' ) );
+        update_post_meta( $id, 'mt_enroll_reject_reason', $reason );
+        do_action( 'mt_enrollment_rejected', $id );
+        wp_send_json_success( [ 'message' => 'Richiesta rifiutata.' ] );
     }
 
     // ─── Colonne custom ───────────────────────────────────────────────────────
@@ -619,6 +808,64 @@ class AdminUI {
         }
     }
 
+    public function enrollment_columns( array $cols ): array {
+        return [
+            'cb'              => $cols['cb'],
+            'mt_member'       => 'Socio',
+            'mt_tour'         => 'Tour richiesto',
+            'mt_moto'         => 'Moto / Targa',
+            'mt_passenger'    => 'Passeggero',
+            'mt_enroll_status'=> 'Stato',
+            'mt_submitted'    => 'Data richiesta',
+            'mt_actions'      => 'Azioni rapide',
+        ];
+    }
+
+    public function enrollment_column_content( string $col, int $post_id ): void {
+        $meta = get_post_meta( $post_id );
+        switch ( $col ) {
+            case 'mt_member':
+                $member = get_userdata( (int) ( $meta['mt_enroll_member_id'][0] ?? 0 ) );
+                if ( $member ) {
+                    echo '<strong>' . esc_html( $member->display_name ) . '</strong><br>';
+                    echo '<small>' . esc_html( $member->user_email ) . '</small>';
+                } else {
+                    echo '–';
+                }
+                break;
+            case 'mt_tour':
+                $tour = get_post( (int) ( $meta['mt_enroll_tour_id'][0] ?? 0 ) );
+                echo $tour ? esc_html( $tour->post_title ) : '–';
+                break;
+            case 'mt_moto':
+                $model = $meta['mt_enroll_moto_model'][0] ?? '';
+                $plate = $meta['mt_enroll_moto_plate'][0] ?? '';
+                echo esc_html( $model );
+                if ( $plate ) echo '<br><small style="font-family:monospace">' . esc_html( $plate ) . '</small>';
+                break;
+            case 'mt_passenger':
+                echo ! empty( $meta['mt_enroll_with_passenger'][0] )
+                    ? '👥 ' . esc_html( $meta['mt_enroll_pass_full_name'][0] ?? '–' )
+                    : '<span style="opacity:.4">No</span>';
+                break;
+            case 'mt_enroll_status':
+                echo $this->enrollment_status_badge( $meta['mt_enroll_status'][0] ?? 'pending' );
+                break;
+            case 'mt_submitted':
+                $raw = $meta['mt_enroll_submitted_at'][0] ?? '';
+                echo $raw ? esc_html( wp_date( 'd/m/Y', strtotime( $raw ) ) ) : '–';
+                break;
+            case 'mt_actions':
+                $status = $meta['mt_enroll_status'][0] ?? 'pending';
+                $nonce  = wp_create_nonce( 'mt_admin_action' );
+                if ( $status === 'pending' ) {
+                    echo "<button class='button button-small mt-btn-approve-enroll' data-id='{$post_id}' data-nonce='{$nonce}'>✅</button> ";
+                    echo "<button class='button button-small mt-btn-reject-enroll'  data-id='{$post_id}' data-nonce='{$nonce}'>❌</button>";
+                }
+                break;
+        }
+    }
+
     public function tour_columns( array $cols ): array {
         return [
             'cb'          => $cols['cb'],
@@ -654,19 +901,38 @@ class AdminUI {
     // ─── Filtro per stato ────────────────────────────────────────────────────
 
     public function filter_registrations_by_status(): void {
-        if ( get_current_screen()->post_type !== 'mt_registration' ) return;
-        $current = $_GET['mt_status'] ?? '';
-        echo '<select name="mt_status">';
-        echo '<option value="">Tutti gli stati</option>';
-        foreach ( [ 'pending' => 'In attesa', 'under_review' => 'In revisione', 'approved' => 'Approvate', 'rejected' => 'Rifiutate' ] as $val => $lbl ) {
-            printf( '<option value="%s" %s>%s</option>', esc_attr( $val ), selected( $current, $val, false ), esc_html( $lbl ) );
+        $screen = get_current_screen();
+        if ( ! $screen ) return;
+
+        if ( $screen->post_type === 'mt_registration' ) {
+            $current = $_GET['mt_status'] ?? '';
+            echo '<select name="mt_status">';
+            echo '<option value="">Tutti gli stati</option>';
+            foreach ( [ 'pending' => 'In attesa', 'under_review' => 'In revisione', 'approved' => 'Approvate', 'rejected' => 'Rifiutate' ] as $val => $lbl ) {
+                printf( '<option value="%s" %s>%s</option>', esc_attr( $val ), selected( $current, $val, false ), esc_html( $lbl ) );
+            }
+            echo '</select>';
         }
-        echo '</select>';
+
+        if ( $screen->post_type === 'mt_tour_enrollment' ) {
+            $current = $_GET['mt_enroll_status'] ?? '';
+            echo '<select name="mt_enroll_status">';
+            echo '<option value="">Tutti gli stati</option>';
+            foreach ( [ 'pending' => 'In attesa', 'approved' => 'Approvate', 'rejected' => 'Rifiutate' ] as $val => $lbl ) {
+                printf( '<option value="%s" %s>%s</option>', esc_attr( $val ), selected( $current, $val, false ), esc_html( $lbl ) );
+            }
+            echo '</select>';
+        }
     }
 
     public function apply_status_filter( \WP_Query $query ): void {
-        if ( ! is_admin() || $query->get( 'post_type' ) !== 'mt_registration' || empty( $_GET['mt_status'] ) ) return;
-        $query->set( 'meta_query', [ [ 'key' => 'mt_reg_status', 'value' => sanitize_text_field( $_GET['mt_status'] ) ] ] );
+        if ( ! is_admin() ) return;
+        if ( $query->get( 'post_type' ) === 'mt_registration' && ! empty( $_GET['mt_status'] ) ) {
+            $query->set( 'meta_query', [ [ 'key' => 'mt_reg_status', 'value' => sanitize_text_field( $_GET['mt_status'] ) ] ] );
+        }
+        if ( $query->get( 'post_type' ) === 'mt_tour_enrollment' && ! empty( $_GET['mt_enroll_status'] ) ) {
+            $query->set( 'meta_query', [ [ 'key' => 'mt_enroll_status', 'value' => sanitize_text_field( $_GET['mt_enroll_status'] ) ] ] );
+        }
     }
 
     // ─── Ruolo custom ─────────────────────────────────────────────────────────
@@ -681,6 +947,19 @@ class AdminUI {
 
     // ─── Helpers ─────────────────────────────────────────────────────────────
 
+    private function enrollment_status_badge( string $status ): string {
+        $map = [
+            'pending'  => [ '🕐 In attesa',  '#f0ad4e', '#fff' ],
+            'approved' => [ '✅ Approvata',   '#5cb85c', '#fff' ],
+            'rejected' => [ '❌ Rifiutata',   '#d9534f', '#fff' ],
+        ];
+        [ $label, $bg, $color ] = $map[ $status ] ?? [ $status, '#ccc', '#333' ];
+        return sprintf(
+            '<span style="background:%s;color:%s;padding:3px 8px;border-radius:12px;font-size:12px;font-weight:600;">%s</span>',
+            $bg, $color, esc_html( $label )
+        );
+    }
+
     private function status_badge( string $status ): string {
         $map = [
             'pending'      => [ '🕐 In attesa',    '#f0ad4e', '#fff' ],
@@ -693,6 +972,18 @@ class AdminUI {
             '<span style="background:%s;color:%s;padding:3px 8px;border-radius:12px;font-size:12px;font-weight:600;">%s</span>',
             $bg, $color, esc_html( $label )
         );
+    }
+
+    private function get_enrollment_counts(): array {
+        $counts = [ 'pending' => 0, 'approved' => 0, 'rejected' => 0 ];
+        foreach ( array_keys( $counts ) as $status ) {
+            $counts[ $status ] = count( get_posts( [
+                'post_type'      => 'mt_tour_enrollment',
+                'posts_per_page' => -1,
+                'meta_query'     => [ [ 'key' => 'mt_enroll_status', 'value' => $status ] ],
+            ] ) );
+        }
+        return $counts;
     }
 
     private function get_registration_counts(): array {
@@ -713,7 +1004,7 @@ class AdminUI {
         // Carica solo sulle pagine del plugin
         $screen = get_current_screen();
         if ( ! $screen ) return;
-        if ( ! in_array( $screen->post_type, [ 'mt_tour', 'mt_registration', 'mt_stage', 'mt_poi' ] )
+        if ( ! in_array( $screen->post_type, [ 'mt_tour', 'mt_registration', 'mt_tour_enrollment', 'mt_stage', 'mt_poi' ] )
              && $screen->id !== 'toplevel_page_motortour' ) return;
 
         wp_enqueue_style(

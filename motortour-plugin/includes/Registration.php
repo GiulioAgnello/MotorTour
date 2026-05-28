@@ -41,14 +41,10 @@ class Registration {
             return new \WP_Error( 'mt_email_exists', __( 'Hai già una iscrizione in corso con questa email.', 'motortour' ), [ 'status' => 409 ] );
         }
 
-        // 4. Verifica tour valido e aperto
-        $tour = get_post( $data['tour_id'] );
-        if ( ! $tour || $tour->post_type !== 'mt_tour' ) {
+        // 4. Verifica tour se fornito (opzionale nell'iscrizione base)
+        $tour = $data['tour_id'] ? get_post( $data['tour_id'] ) : null;
+        if ( $data['tour_id'] && ( ! $tour || $tour->post_type !== 'mt_tour' ) ) {
             return new \WP_Error( 'mt_invalid_tour', __( 'Tour non valido.', 'motortour' ), [ 'status' => 400 ] );
-        }
-        $tour_status = get_post_meta( $tour->ID, 'mt_tour_status', true );
-        if ( $tour_status !== 'open' ) {
-            return new \WP_Error( 'mt_tour_closed', __( 'Le iscrizioni per questo tour sono chiuse.', 'motortour' ), [ 'status' => 400 ] );
         }
 
         // 5. Upload documenti
@@ -63,9 +59,13 @@ class Registration {
         }
 
         // 6. Crea il CPT mt_registration
+        $reg_title = sanitize_text_field( $data['pilot_last_name'] . ' ' . $data['pilot_first_name'] );
+        if ( $tour ) {
+            $reg_title .= ' – ' . $tour->post_title;
+        }
         $reg_id = wp_insert_post( [
             'post_type'   => 'mt_registration',
-            'post_title'  => sanitize_text_field( $data['pilot_last_name'] . ' ' . $data['pilot_first_name'] . ' – ' . $tour->post_title ),
+            'post_title'  => $reg_title,
             'post_status' => 'publish',
         ] );
 
@@ -94,22 +94,6 @@ class Registration {
         update_post_meta( $reg_id, 'mt_reg_pilot_address',      $data['pilot_address'] );
         update_post_meta( $reg_id, 'mt_reg_pilot_zip',          $data['pilot_zip'] );
         update_post_meta( $reg_id, 'mt_reg_pilot_phone',        $data['pilot_phone'] );
-
-        // Moto
-        update_post_meta( $reg_id, 'mt_reg_moto_model',         $data['moto_model'] );
-        update_post_meta( $reg_id, 'mt_reg_moto_plate',         strtoupper( $data['moto_plate'] ) );
-
-        // Passeggero
-        $has_pass = ! empty( $data['passenger_full_name'] );
-        update_post_meta( $reg_id, 'mt_reg_has_passenger',      $has_pass );
-        if ( $has_pass ) {
-            update_post_meta( $reg_id, 'mt_reg_pass_full_name',     $data['passenger_full_name'] );
-            update_post_meta( $reg_id, 'mt_reg_pass_birth_place',   $data['passenger_birth_place'] );
-            update_post_meta( $reg_id, 'mt_reg_pass_birth_date',    $data['passenger_birth_date'] );
-            update_post_meta( $reg_id, 'mt_reg_pass_city',          $data['passenger_city'] );
-            update_post_meta( $reg_id, 'mt_reg_pass_address',       $data['passenger_address'] );
-            update_post_meta( $reg_id, 'mt_reg_pass_phone',         $data['passenger_phone'] );
-        }
 
         // Documenti
         update_post_meta( $reg_id, 'mt_reg_doc_license_id',     $license_id );
@@ -245,8 +229,9 @@ class Registration {
     // ─── Validazione ─────────────────────────────────────────────────────────
 
     private function validate( \WP_REST_Request $request ): true|\WP_Error {
+        // tour_id è opzionale: l'iscrizione base è al club, non a un tour specifico.
+        // Moto e passeggero vengono forniti alla richiesta di ogni tour (mt_tour_enrollment).
         $required = [
-            'tour_id'           => 'ID del tour',
             'email'             => 'Email',
             'password'          => 'Password',
             'pilot_first_name'  => 'Nome pilota',
@@ -257,8 +242,6 @@ class Registration {
             'pilot_address'     => 'Indirizzo',
             'pilot_zip'         => 'CAP',
             'pilot_phone'       => 'Cellulare',
-            'moto_model'        => 'Modello moto',
-            'moto_plate'        => 'Targa moto',
             'consent_waiver'    => 'Liberatoria',
             'consent_privacy'   => 'Privacy',
         ];
@@ -297,25 +280,17 @@ class Registration {
 
     private function sanitize( \WP_REST_Request $request ): array {
         return [
-            'tour_id'              => absint( $request->get_param( 'tour_id' ) ),
-            'email'                => sanitize_email( $request->get_param( 'email' ) ),
-            'password'             => $request->get_param( 'password' ), // raw, sarà hashata
-            'pilot_first_name'     => sanitize_text_field( $request->get_param( 'pilot_first_name' ) ),
-            'pilot_last_name'      => sanitize_text_field( $request->get_param( 'pilot_last_name' ) ),
-            'pilot_birth_place'    => sanitize_text_field( $request->get_param( 'pilot_birth_place' ) ),
-            'pilot_birth_date'     => sanitize_text_field( $request->get_param( 'pilot_birth_date' ) ),
-            'pilot_city'           => sanitize_text_field( $request->get_param( 'pilot_city' ) ),
-            'pilot_address'        => sanitize_text_field( $request->get_param( 'pilot_address' ) ),
-            'pilot_zip'            => sanitize_text_field( $request->get_param( 'pilot_zip' ) ),
-            'pilot_phone'          => sanitize_text_field( $request->get_param( 'pilot_phone' ) ),
-            'moto_model'           => sanitize_text_field( $request->get_param( 'moto_model' ) ),
-            'moto_plate'           => sanitize_text_field( $request->get_param( 'moto_plate' ) ),
-            'passenger_full_name'  => sanitize_text_field( $request->get_param( 'passenger_full_name' ) ?? '' ),
-            'passenger_birth_place'=> sanitize_text_field( $request->get_param( 'passenger_birth_place' ) ?? '' ),
-            'passenger_birth_date' => sanitize_text_field( $request->get_param( 'passenger_birth_date' ) ?? '' ),
-            'passenger_city'       => sanitize_text_field( $request->get_param( 'passenger_city' ) ?? '' ),
-            'passenger_address'    => sanitize_text_field( $request->get_param( 'passenger_address' ) ?? '' ),
-            'passenger_phone'      => sanitize_text_field( $request->get_param( 'passenger_phone' ) ?? '' ),
+            'tour_id'           => absint( $request->get_param( 'tour_id' ) ?? 0 ), // opzionale
+            'email'             => sanitize_email( $request->get_param( 'email' ) ),
+            'password'          => $request->get_param( 'password' ), // raw, sarà hashata
+            'pilot_first_name'  => sanitize_text_field( $request->get_param( 'pilot_first_name' ) ),
+            'pilot_last_name'   => sanitize_text_field( $request->get_param( 'pilot_last_name' ) ),
+            'pilot_birth_place' => sanitize_text_field( $request->get_param( 'pilot_birth_place' ) ),
+            'pilot_birth_date'  => sanitize_text_field( $request->get_param( 'pilot_birth_date' ) ),
+            'pilot_city'        => sanitize_text_field( $request->get_param( 'pilot_city' ) ),
+            'pilot_address'     => sanitize_text_field( $request->get_param( 'pilot_address' ) ),
+            'pilot_zip'         => sanitize_text_field( $request->get_param( 'pilot_zip' ) ),
+            'pilot_phone'       => sanitize_text_field( $request->get_param( 'pilot_phone' ) ),
         ];
     }
 }

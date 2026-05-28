@@ -15,10 +15,16 @@ if ( ! defined( 'ABSPATH' ) ) exit;
 class Email {
 
     public function register_hooks(): void {
+        // Membership al club
         add_action( 'mt_registration_submitted',    [ $this, 'on_submitted' ] );
         add_action( 'mt_registration_under_review', [ $this, 'on_under_review' ] );
         add_action( 'mt_registration_approved',     [ $this, 'on_approved' ] );
         add_action( 'mt_registration_rejected',     [ $this, 'on_rejected' ] );
+
+        // Richieste iscrizione a un tour
+        add_action( 'mt_enrollment_submitted',      [ $this, 'on_enrollment_submitted' ] );
+        add_action( 'mt_enrollment_approved',       [ $this, 'on_enrollment_approved' ] );
+        add_action( 'mt_enrollment_rejected',       [ $this, 'on_enrollment_rejected' ] );
     }
 
     // ─── Handlers ─────────────────────────────────────────────────────────────
@@ -82,6 +88,48 @@ class Email {
             $data['email'],
             sprintf( '❌ Iscrizione non accettata – %s', $data['tour_title'] ),
             $this->template_rejected( $data )
+        );
+    }
+
+    // ─── Handlers richieste tour ─────────────────────────────────────────────
+
+    public function on_enrollment_submitted( int $enroll_id ): void {
+        $d = $this->get_enrollment_data( $enroll_id );
+        if ( ! $d ) return;
+
+        // Email al socio
+        $this->send(
+            $d['member_email'],
+            sprintf( '🏍️ Richiesta tour inviata – %s', $d['tour_title'] ),
+            $this->template_enrollment_submitted_member( $d )
+        );
+
+        // Email all'admin
+        $admin_email = get_option( 'mt_admin_email', get_option( 'admin_email' ) );
+        $this->send(
+            $admin_email,
+            sprintf( '🏍️ Nuova richiesta tour – %s (%s)', $d['member_name'], $d['tour_title'] ),
+            $this->template_enrollment_submitted_admin( $d )
+        );
+    }
+
+    public function on_enrollment_approved( int $enroll_id ): void {
+        $d = $this->get_enrollment_data( $enroll_id );
+        if ( ! $d ) return;
+        $this->send(
+            $d['member_email'],
+            sprintf( '🎉 Richiesta approvata! – %s', $d['tour_title'] ),
+            $this->template_enrollment_approved( $d )
+        );
+    }
+
+    public function on_enrollment_rejected( int $enroll_id ): void {
+        $d = $this->get_enrollment_data( $enroll_id );
+        if ( ! $d ) return;
+        $this->send(
+            $d['member_email'],
+            sprintf( '❌ Richiesta non accettata – %s', $d['tour_title'] ),
+            $this->template_enrollment_rejected( $d )
         );
     }
 
@@ -173,6 +221,105 @@ class Email {
             <p>Per chiarimenti o per inviare una nuova iscrizione con i dati corretti, rispondi a questa email.</p>
             <p>Grazie per l'interesse e speriamo di vederti al prossimo tour! 🏍️<br><strong>Motoclub Salentum Terrae A.S.D.</strong></p>
         " );
+    }
+
+    // ─── Template richieste tour ─────────────────────────────────────────────
+
+    private function template_enrollment_submitted_member( array $d ): string {
+        $portal_url = home_url( '/portale-tour' );
+        return $this->wrap( "
+            <h2>Ciao {$d['member_first_name']}! 🏍️</h2>
+            <p>La tua richiesta di partecipazione al tour è stata inviata:</p>
+            <div class='highlight'>
+                <strong>{$d['tour_title']}</strong><br>
+                {$d['tour_date']}<br>
+                Moto: {$d['moto_model']} – {$d['moto_plate']}
+            </div>
+            <p>Il nostro staff verificherà la richiesta e ti darà conferma via email.</p>
+            <p>Puoi controllare lo stato in qualsiasi momento accedendo al portale:</p>
+            <p><a href='{$portal_url}' class='btn'>Vai al portale →</a></p>
+            <p>A presto su due ruote! 🤘<br><strong>Motoclub Salentum Terrae A.S.D.</strong></p>
+        " );
+    }
+
+    private function template_enrollment_submitted_admin( array $d ): string {
+        $admin_url = admin_url( "post.php?post={$d['enroll_id']}&action=edit" );
+        $passenger = $d['with_passenger']
+            ? '✅ Sì – ' . esc_html( $d['pass_name'] )
+            : 'No';
+        return $this->wrap( "
+            <h2>🏍️ Nuova richiesta di partecipazione al tour</h2>
+            <table class='data-table'>
+                <tr><td>Tour</td><td><strong>{$d['tour_title']}</strong></td></tr>
+                <tr><td>Socio</td><td>{$d['member_name']}</td></tr>
+                <tr><td>Email</td><td>{$d['member_email']}</td></tr>
+                <tr><td>Moto</td><td>{$d['moto_model']} – {$d['moto_plate']}</td></tr>
+                <tr><td>Passeggero</td><td>{$passenger}</td></tr>
+                <tr><td>Inviata il</td><td>{$d['submitted_at']}</td></tr>
+            </table>
+            <p><a href='{$admin_url}' class='btn'>Gestisci la richiesta →</a></p>
+        " );
+    }
+
+    private function template_enrollment_approved( array $d ): string {
+        $portal_url = home_url( '/portale-tour' );
+        return $this->wrap( "
+            <h2>🎉 Sei confermato per il tour!</h2>
+            <p>Ciao <strong>{$d['member_first_name']}</strong>,</p>
+            <p>La tua richiesta di partecipazione a <strong>{$d['tour_title']}</strong> è stata <strong>approvata</strong>!</p>
+            <div class='highlight'>
+                📅 {$d['tour_date']}<br>
+                🏍️ Moto: {$d['moto_model']} – {$d['moto_plate']}
+            </div>
+            <p>Accedi al portale per i dettagli del tour (itinerario, tappe, orari):</p>
+            <p><a href='{$portal_url}' class='btn'>Vai al portale →</a></p>
+            <p>Non vediamo l'ora di vederti in sella! 🏍️<br><strong>Motoclub Salentum Terrae A.S.D.</strong></p>
+        " );
+    }
+
+    private function template_enrollment_rejected( array $d ): string {
+        $reason = ! empty( $d['reject_reason'] )
+            ? "<div class='highlight'><strong>Motivazione:</strong><br>{$d['reject_reason']}</div>"
+            : '';
+        return $this->wrap( "
+            <h2>Richiesta non accettata</h2>
+            <p>Ciao <strong>{$d['member_first_name']}</strong>,</p>
+            <p>La tua richiesta per il tour <strong>{$d['tour_title']}</strong> non è stata accettata.</p>
+            {$reason}
+            <p>Per chiarimenti rispondi a questa email o contattaci su Instagram.</p>
+            <p>Grazie e speriamo di vederti al prossimo tour! 🏍️<br><strong>Motoclub Salentum Terrae A.S.D.</strong></p>
+        " );
+    }
+
+    // ─── Raccolta dati per email enrollment ──────────────────────────────────
+
+    private function get_enrollment_data( int $enroll_id ): ?array {
+        $post = get_post( $enroll_id );
+        if ( ! $post ) return null;
+
+        $meta      = get_post_meta( $enroll_id );
+        $tour_id   = (int) ( $meta['mt_enroll_tour_id'][0] ?? 0 );
+        $tour      = get_post( $tour_id );
+        $member    = get_userdata( (int) ( $meta['mt_enroll_member_id'][0] ?? 0 ) );
+        if ( ! $member ) return null;
+
+        $submitted_raw = $meta['mt_enroll_submitted_at'][0] ?? '';
+        $submitted_fmt = $submitted_raw ? wp_date( 'd/m/Y H:i', strtotime( $submitted_raw ) ) : '';
+
+        return [
+            'enroll_id'      => $enroll_id,
+            'member_email'   => $member->user_email,
+            'member_name'    => $member->display_name,
+            'member_first_name' => $member->first_name ?: $member->display_name,
+            'moto_model'     => $meta['mt_enroll_moto_model'][0] ?? '',
+            'moto_plate'     => $meta['mt_enroll_moto_plate'][0] ?? '',
+            'with_passenger' => (bool) ( $meta['mt_enroll_with_passenger'][0] ?? false ),
+            'pass_name'      => $meta['mt_enroll_pass_full_name'][0] ?? '',
+            'reject_reason'  => $meta['mt_enroll_reject_reason'][0] ?? '',
+            'submitted_at'   => $submitted_fmt,
+            'tour_title'     => $tour ? $tour->post_title : '–',
+            'tour_date'      => $tour ? wp_date( 'd/m/Y', strtotime( get_post_meta( $tour_id, 'mt_tour_date', true ) ) ) : '',
+        ];
     }
 
     // ─── Wrapper HTML ─────────────────────────────────────────────────────────

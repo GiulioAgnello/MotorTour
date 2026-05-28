@@ -1,6 +1,8 @@
 /**
  * Client HTTP per le chiamate alla REST API WordPress.
  * Legge apiUrl e nonce da window.mtConfig.
+ *
+ * Token salvato in localStorage per sessione persistente tra tab e riavvii.
  */
 
 const getConfig = () => window.mtConfig || {};
@@ -8,7 +10,7 @@ const getConfig = () => window.mtConfig || {};
 export async function apiFetch( endpoint, options = {} ) {
   const { apiUrl, nonce } = getConfig();
   const url     = `${ apiUrl }/${ endpoint.replace( /^\//, '' ) }`;
-  const token   = sessionStorage.getItem( 'mt_token' );
+  const token   = localStorage.getItem( 'mt_token' );
 
   const headers = {
     'X-WP-Nonce': nonce,
@@ -48,11 +50,25 @@ export async function apiFetch( endpoint, options = {} ) {
 // ── Helpers specifici ────────────────────────────────────────────────────────
 
 export const api = {
-  getTours:         ()            => apiFetch( 'tours' ),
-  getTour:          ( id )        => apiFetch( `tours/${ id }` ),
-  submitRegistration: ( formData )=> apiFetch( 'register', { method: 'POST', body: formData } ),
-  login:            ( email, pwd )=> apiFetch( 'auth/login', { method: 'POST', body: { email, password: pwd } } ),
-  logout:           ()            => apiFetch( 'auth/logout', { method: 'POST' } ),
-  getMyRegistration: ()           => apiFetch( 'my/registration' ),
-  getMyTour:        ()            => apiFetch( 'my/tour' ),
+  // Tour (pubblici)
+  getTours:   ()       => apiFetch( 'tours' ),
+  getTour:    ( id )   => apiFetch( `tours/${ id }` ),
+
+  // Iscrizione base al club
+  submitRegistration: ( formData ) => apiFetch( 'register', { method: 'POST', body: formData } ),
+
+  // Auth
+  login:  ( email, pwd ) => apiFetch( 'auth/login',  { method: 'POST', body: { email, password: pwd } } ),
+  logout: ()             => apiFetch( 'auth/logout', { method: 'POST' } ),
+
+  // Area riservata — membership
+  getMyRegistration: () => apiFetch( 'my/registration' ),
+  getMyProfile:      () => apiFetch( 'my/profile' ),
+
+  // Area riservata — richieste tour
+  getMyEnrollments:  ()          => apiFetch( 'my/enrollments' ),
+  enrollTour:        ( tourId, body ) => apiFetch( `tours/${ tourId }/enroll`, { method: 'POST', body } ),
+
+  // Dettaglio tour (itinerario completo, solo per approvati)
+  getMyTour: () => apiFetch( 'my/tour' ),
 };

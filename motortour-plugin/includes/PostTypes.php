@@ -7,10 +7,11 @@ if ( ! defined( 'ABSPATH' ) ) exit;
  * Registra tutti i Custom Post Types e i loro meta fields.
  *
  * CPT registrati:
- *  - mt_tour        → Tour / Evento
- *  - mt_registration → Iscrizione utente
- *  - mt_stage       → Tappa del tour
- *  - mt_poi         → Punto di interesse
+ *  - mt_tour           → Tour / Evento
+ *  - mt_registration   → Iscrizione base al club (membership)
+ *  - mt_tour_enrollment → Richiesta iscrizione a un tour specifico (per membri approvati)
+ *  - mt_stage          → Tappa del tour
+ *  - mt_poi            → Punto di interesse
  */
 class PostTypes {
 
@@ -24,6 +25,7 @@ class PostTypes {
     public function register_post_types(): void {
         $this->register_tour();
         $this->register_registration();
+        $this->register_tour_enrollment();
         $this->register_stage();
         $this->register_poi();
     }
@@ -72,6 +74,26 @@ class PostTypes {
         ] );
     }
 
+    private function register_tour_enrollment(): void {
+        register_post_type( 'mt_tour_enrollment', [
+            'labels' => [
+                'name'          => __( 'Richieste Tour', 'motortour' ),
+                'singular_name' => __( 'Richiesta Tour', 'motortour' ),
+                'add_new_item'  => __( 'Nuova Richiesta', 'motortour' ),
+                'edit_item'     => __( 'Gestisci Richiesta', 'motortour' ),
+                'all_items'     => __( 'Tutte le Richieste', 'motortour' ),
+            ],
+            'public'          => false,
+            'show_ui'         => true,
+            'show_in_menu'    => false,
+            'show_in_rest'    => false,
+            'supports'        => [ 'title' ],
+            'capability_type' => 'post',
+            'has_archive'     => false,
+            'rewrite'         => false,
+        ] );
+    }
+
     private function register_stage(): void {
         register_post_type( 'mt_stage', [
             'labels' => [
@@ -117,6 +139,7 @@ class PostTypes {
     public function register_meta_fields(): void {
         $this->register_tour_meta();
         $this->register_registration_meta();
+        $this->register_tour_enrollment_meta();
         $this->register_stage_meta();
         $this->register_poi_meta();
     }
@@ -209,6 +232,48 @@ class PostTypes {
                 'type'         => $type,
                 'single'       => true,
                 'show_in_rest' => false, // non esponiamo via REST direttamente
+                'default'      => $type === 'integer' ? 0 : ( $type === 'boolean' ? false : '' ),
+            ] );
+        }
+    }
+
+    private function register_tour_enrollment_meta(): void {
+        $fields = [
+            // Collegamento
+            'mt_enroll_tour_id'         => 'integer', // tour richiesto
+            'mt_enroll_member_id'       => 'integer', // WP user ID del socio
+            'mt_enroll_status'          => 'string',  // pending|approved|rejected
+
+            // Veicolo (obbligatorio per ogni tour)
+            'mt_enroll_moto_model'      => 'string',
+            'mt_enroll_moto_plate'      => 'string',
+
+            // Passeggero (opzionale per ogni tour)
+            'mt_enroll_with_passenger'  => 'boolean',
+            'mt_enroll_pass_full_name'  => 'string',
+            'mt_enroll_pass_birth_place'=> 'string',
+            'mt_enroll_pass_birth_date' => 'string',
+            'mt_enroll_pass_city'       => 'string',
+            'mt_enroll_pass_address'    => 'string',
+            'mt_enroll_pass_phone'      => 'string',
+
+            // Note libere
+            'mt_enroll_notes'           => 'string',
+
+            // Esito
+            'mt_enroll_reject_reason'   => 'string',
+
+            // Timestamps
+            'mt_enroll_submitted_at'    => 'string',
+            'mt_enroll_approved_at'     => 'string',
+            'mt_enroll_rejected_at'     => 'string',
+        ];
+
+        foreach ( $fields as $key => $type ) {
+            register_post_meta( 'mt_tour_enrollment', $key, [
+                'type'         => $type,
+                'single'       => true,
+                'show_in_rest' => false,
                 'default'      => $type === 'integer' ? 0 : ( $type === 'boolean' ? false : '' ),
             ] );
         }
