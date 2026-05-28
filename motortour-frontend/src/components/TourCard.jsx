@@ -1,6 +1,7 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { C } from '../styles/theme';
+import { useAuth } from '../App';
 
 const STATUS_MAP = {
   open:     { label: 'Iscrizioni aperte', bg: '#d4edda', color: '#155724' },
@@ -10,6 +11,7 @@ const STATUS_MAP = {
 };
 
 export default function TourCard( { tour } ) {
+  const { isLoggedIn } = useAuth();
   const st = STATUS_MAP[ tour.status ] || STATUS_MAP.draft;
 
   const dateStr = tour.date
@@ -85,7 +87,7 @@ export default function TourCard( { tour } ) {
         {/* CTA */}
         { tour.status === 'open' && (
           <Link
-            to={ `/iscriviti/${ tour.id }` }
+            to={ isLoggedIn ? `/tour/${ tour.id }/iscrivi` : '/iscriviti' }
             style={ {
               display: 'inline-block',
               marginTop: 10,
@@ -98,7 +100,7 @@ export default function TourCard( { tour } ) {
               textDecoration: 'none',
             } }
           >
-            Iscriviti →
+            { isLoggedIn ? 'Richiedi iscrizione →' : 'Iscriviti al club →' }
           </Link>
         ) }
       </div>
