@@ -7,7 +7,7 @@ export default function Login() {
   const { login } = useAuth();
   const navigate  = useNavigate();
   const location  = useLocation();
-  const from      = location.state?.from?.pathname || '/area-riservata';
+  const from      = '/area-riservata';
 
   const [ form,    setForm    ] = useState( { email: '', password: '' } );
   const [ loading, setLoading ] = useState( false );
