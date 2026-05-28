@@ -87,7 +87,7 @@ export default function TourCard( { tour } ) {
         {/* CTA */}
         { tour.status === 'open' && (
           <Link
-            to={ isLoggedIn ? `/tour/${ tour.id }/iscrivi` : '/iscriviti' }
+            to={ isLoggedIn ? `/tour/${ tour.id }/iscrivi` : '/login' }
             style={ {
               display: 'inline-block',
               marginTop: 10,
@@ -100,7 +100,7 @@ export default function TourCard( { tour } ) {
               textDecoration: 'none',
             } }
           >
-            { isLoggedIn ? 'Richiedi iscrizione →' : 'Iscriviti al club →' }
+            { isLoggedIn ? 'Richiedi iscrizione →' : 'Accedi per iscriverti →' }
           </Link>
         ) }
       </div>

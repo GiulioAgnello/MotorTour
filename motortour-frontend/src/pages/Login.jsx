@@ -7,7 +7,7 @@ export default function Login() {
   const { login } = useAuth();
   const navigate  = useNavigate();
   const location  = useLocation();
-  const from      = '/area-riservata';
+  const from      = '/';
 
   const [ form,    setForm    ] = useState( { email: '', password: '' } );
   const [ loading, setLoading ] = useState( false );
@@ -82,8 +82,8 @@ export default function Login() {
 
             <p style={ { textAlign: 'center', marginTop: 20, fontSize: 13, color: 'var(--mt-text-muted)' } }>
               Non sei ancora iscritto?{' '}
-              <Link to="/" style={ { color: 'var(--mt-primary)', fontWeight: 600 } }>
-                Scopri i tour disponibili
+              <Link to="/iscriviti" style={ { color: 'var(--mt-primary)', fontWeight: 600 } }>
+                Iscriviti al club →
               </Link>
             </p>
           </div>
