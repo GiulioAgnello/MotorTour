@@ -51,9 +51,10 @@ class Frontend {
         $config     = $this->get_frontend_config();
         $config_json = wp_json_encode( $config );
 
-        $css_url = MT_PLUGIN_URL . 'assets/frontend/index.css';
-        $js_url  = MT_PLUGIN_URL . 'assets/frontend/index.js';
-        $version = MT_VERSION;
+        $css_url     = MT_PLUGIN_URL . 'assets/frontend/index.css';
+        $js_url      = MT_PLUGIN_URL . 'assets/frontend/index.js';
+        $js_file     = MT_PLUGIN_DIR . 'assets/frontend/index.js';
+        $version     = file_exists( $js_file ) ? filemtime( $js_file ) : MT_VERSION;
 
         $site_name = get_bloginfo( 'name' ) ?: 'Motoclub Salentum Terrae A.S.D.';
         $lang      = substr( get_locale(), 0, 2 );
