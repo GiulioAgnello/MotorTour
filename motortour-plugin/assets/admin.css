@@ -1,0 +1,174 @@
+/* ============================================================
+   MotorTour — Admin CSS
+   ============================================================ */
+
+/* ── Layout dashboard ──────────────────────────────────────── */
+.mt-dashboard .mt-page-title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 22px;
+    margin-bottom: 24px;
+}
+
+.mt-stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 16px;
+    margin-bottom: 32px;
+}
+
+.mt-stat-card {
+    background: #fff;
+    border: 1px solid #e0e0e0;
+    border-radius: 12px;
+    padding: 20px 16px;
+    text-align: center;
+    box-shadow: 0 1px 4px rgba(0,0,0,.06);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    transition: box-shadow .15s;
+}
+
+.mt-stat-card:hover {
+    box-shadow: 0 4px 12px rgba(0,0,0,.12);
+}
+
+.mt-stat-icon { font-size: 28px; }
+.mt-stat-count { font-size: 36px; font-weight: 700; line-height: 1; }
+.mt-stat-label { font-size: 13px; color: #666; }
+.mt-stat-link   { font-size: 12px; color: #6c3de8; text-decoration: none; margin-top: 4px; }
+
+.mt-stat-pending      .mt-stat-count { color: #e0a800; }
+.mt-stat-under_review .mt-stat-count { color: #17a2b8; }
+.mt-stat-approved     .mt-stat-count { color: #28a745; }
+.mt-stat-rejected     .mt-stat-count { color: #dc3545; }
+
+/* ── Tabelle ───────────────────────────────────────────────── */
+.mt-table { margin-top: 0 !important; }
+.mt-table th { background: #f8f8f8; font-weight: 600; }
+.mt-actions { display: flex; gap: 4px; flex-wrap: wrap; }
+
+/* ── Metabox grid ──────────────────────────────────────────── */
+.mt-metabox-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px 20px;
+    padding: 4px 0;
+}
+
+.mt-field {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.mt-field.mt-field-full {
+    grid-column: 1 / -1;
+}
+
+.mt-field label {
+    font-weight: 600;
+    font-size: 13px;
+    color: #1d2327;
+}
+
+.mt-field input[type="text"],
+.mt-field input[type="date"],
+.mt-field input[type="time"],
+.mt-field input[type="number"],
+.mt-field select {
+    width: 100%;
+    padding: 6px 10px;
+    border: 1px solid #c3c4c7;
+    border-radius: 6px;
+    font-size: 14px;
+}
+
+.mt-field input[type="color"] {
+    height: 40px;
+    width: 60px;
+    padding: 2px;
+    border-radius: 6px;
+    cursor: pointer;
+}
+
+/* ── Dettaglio iscrizione ──────────────────────────────────── */
+.mt-reg-details {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+}
+
+.mt-reg-section {
+    background: #f9f9f9;
+    border: 1px solid #e8e8e8;
+    border-radius: 8px;
+    padding: 12px 16px;
+}
+
+.mt-reg-section h4 {
+    margin: 0 0 10px;
+    font-size: 13px;
+    color: #1d2327;
+    border-bottom: 1px solid #e8e8e8;
+    padding-bottom: 6px;
+}
+
+.mt-detail-table {
+    width: 100%;
+    font-size: 13px;
+    border-collapse: collapse;
+}
+
+.mt-detail-table td {
+    padding: 4px 0;
+    vertical-align: top;
+}
+
+.mt-detail-table td:first-child {
+    color: #777;
+    width: 40%;
+    padding-right: 12px;
+}
+
+/* ── Modal rifiuto ─────────────────────────────────────────── */
+.mt-modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,.5);
+    z-index: 100000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.mt-modal {
+    background: #fff;
+    border-radius: 12px;
+    padding: 28px;
+    width: 480px;
+    max-width: 90vw;
+    box-shadow: 0 8px 32px rgba(0,0,0,.2);
+}
+
+.mt-modal h3 { margin: 0 0 16px; }
+
+.mt-modal textarea {
+    width: 100%;
+    box-sizing: border-box;
+    border: 1px solid #c3c4c7;
+    border-radius: 8px;
+    padding: 10px;
+    font-size: 14px;
+    resize: vertical;
+}
+
+.mt-modal-actions {
+    display: flex;
+    gap: 8px;
+    margin-top: 16px;
+    justify-content: flex-end;
+}
